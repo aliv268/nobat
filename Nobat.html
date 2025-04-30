@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fa">
 <head>
@@ -107,26 +108,34 @@
 
   const stateRef = ref(db, "queueState");
 
-  // اجازه گرفتن نوتیفیکیشن
-  if ("Notification" in window && Notification.permission !== "granted") {
-    Notification.requestPermission();
-  }
-
-  function showNotification(name) {
-    if (Notification.permission === "granted") {
-      new Notification("نفر بعدی انتخاب شد", {
-        body: `${name} آماده پاسخگویی است.`,
-        icon: "https://cdn-icons-png.flaticon.com/512/456/456212.png"
-      });
-    }
-  }
-
   function saveState() {
     set(stateRef, {
       currentIndex,
       inactive: Array.from(inactiveSet),
       history
     });
+  }
+
+  function notifyNewPerson(name) {
+    if (Notification.permission === "granted") {
+      new Notification("نوبت جدید", {
+        body: `نوبت ${name} رسیده است.`,
+        icon: "https://cdn-icons-png.flaticon.com/512/1827/1827349.png"
+      });
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          new Notification("نوبت جدید", {
+            body: `نوبت ${name} رسیده است.`,
+            icon: "https://cdn-icons-png.flaticon.com/512/1827/1827349.png"
+          });
+        }
+      });
+    }
+  }
+
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
   }
 
   function renderGrid() {
@@ -170,15 +179,16 @@
   }
 
   function nextPerson() {
+    const oldIndex = currentIndex;
     let i = currentIndex;
     for (let step = 0; step < people.length; step++) {
       i = (i + 1) % people.length;
       if (!inactiveSet.has(i)) {
         if (currentIndex !== -1) history.push(currentIndex);
         currentIndex = i;
+        if (currentIndex !== oldIndex && document.hidden) notifyNewPerson(people[currentIndex]);
         saveState();
         renderGrid();
-        showNotification(people[currentIndex]); // 🔔 ارسال نوتیف
         return;
       }
     }
@@ -186,8 +196,10 @@
   }
 
   function prevPerson() {
+    const oldIndex = currentIndex;
     if (history.length > 0) {
       currentIndex = history.pop();
+      if (currentIndex !== oldIndex && document.hidden) notifyNewPerson(people[currentIndex]);
       saveState();
       renderGrid();
     } else {
