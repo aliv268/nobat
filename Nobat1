@@ -1,0 +1,233 @@
+
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8" />
+  <title>نوبت‌دهی آنلاین</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f2f5;
+      direction: rtl;
+      text-align: center;
+      padding: 20px;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      max-width: 600px;
+      margin: auto;
+    }
+    .person {
+      padding: 15px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .person.active {
+      border-color: teal;
+      color: teal;
+    }
+    .person.inactive {
+      background: #fcc;
+      border-color: #f88;
+      color: #a00;
+      cursor: pointer;
+    }
+    .buttons {
+      margin-top: 20px;
+    }
+    .buttons button {
+      padding: 10px 20px;
+      margin: 0 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .next {
+      background: #00bfa6;
+      color: white;
+    }
+    .back {
+      background: gold;
+    }
+    .status {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>پاسخدهی چت</h2>
+<div class="grid" id="grid"></div>
+
+<div class="status" id="status">نوبت فعلی: -</div>
+
+<div class="buttons">
+  <button class="back" onclick="prevPerson()">🔙 بازگشت به نفر قبلی</button>
+  <button class="next" onclick="nextPerson()">نفر بعدی 🔜</button>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+  import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBsgSROXymEE8kXm4Zueaae9fEZNBdfIMg",
+    authDomain: "ompfinex-968c1.firebaseapp.com",
+    databaseURL: "https://ompfinex-968c1-default-rtdb.firebaseio.com",
+    projectId: "ompfinex-968c1",
+    storageBucket: "ompfinex-968c1.firebasestorage.app",
+    messagingSenderId: "875044236378",
+    appId: "1:875044236378:web:b3743a5e85ac15ad167c63",
+    measurementId: "G-Q65SMECMZP"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const people = [
+    "علیرضا رجبی", "سارا جعفری", "ستاره طالقانی", "سعید معصومی",
+    "نیوشا علیزاده", "سهیلا شیرخانی", "رویا کاهانی", "کیانا شریفی",
+    "عماد حسینی", "پریوش میرشاهی", "سوگند افشاری", "نسیم انصاری"
+  ];
+
+  const grid = document.getElementById("grid");
+  const status = document.getElementById("status");
+
+  let currentIndex = -1;
+  let inactiveSet = new Set();
+  let history = [];
+
+  const stateRef = ref(db, "queueState");
+
+  function saveState() {
+    set(stateRef, {
+      currentIndex,
+      inactive: Array.from(inactiveSet),
+      history
+    });
+  }
+
+  function notifyNewPerson(name) {
+    if (Notification.permission === "granted") {
+      new Notification("نوبت جدید", {
+        body: `نوبت ${name} رسیده است.`,
+        icon: "https://cdn-icons-png.flaticon.com/512/1827/1827349.png"
+      });
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          new Notification("نوبت جدید", {
+            body: `نوبت ${name} رسیده است.`,
+            icon: "https://cdn-icons-png.flaticon.com/512/1827/1827349.png"
+          });
+        }
+      });
+    }
+  }
+
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
+  function renderGrid() {
+    grid.innerHTML = "";
+    people.forEach((name, index) => {
+      const div = document.createElement("div");
+      div.className = "person";
+
+      if (inactiveSet.has(index)) {
+        div.classList.add("inactive");
+        div.textContent = `${name} (غیرفعال/تماس)`;
+      } else if (index === currentIndex) {
+        div.classList.add("active");
+        div.textContent = `${name} (آماده پاسخ)`;
+      } else {
+        div.textContent = `${name} (فعال)`;
+      }
+
+      div.onclick = () => {
+        if (index !== currentIndex) {
+          if (inactiveSet.has(index)) {
+            inactiveSet.delete(index);
+          } else {
+            inactiveSet.add(index);
+          }
+          saveState();
+          renderGrid();
+        }
+      };
+
+      grid.appendChild(div);
+    });
+    updateStatus();
+  }
+
+  function updateStatus() {
+    if (currentIndex >= 0)
+      status.textContent = `نوبت فعلی: ${people[currentIndex]}`;
+    else
+      status.textContent = "نوبت فعلی: -";
+  }
+
+  function nextPerson() {
+    const oldIndex = currentIndex;
+    let i = currentIndex;
+    for (let step = 0; step < people.length; step++) {
+      i = (i + 1) % people.length;
+      if (!inactiveSet.has(i)) {
+        if (currentIndex !== -1) history.push(currentIndex);
+        currentIndex = i;
+        if (currentIndex !== oldIndex && document.hidden) notifyNewPerson(people[currentIndex]);
+        saveState();
+        renderGrid();
+        return;
+      }
+    }
+    alert("نفر فعالی باقی نمانده!");
+  }
+
+  function prevPerson() {
+    const oldIndex = currentIndex;
+    if (history.length > 0) {
+      currentIndex = history.pop();
+      if (currentIndex !== oldIndex && document.hidden) notifyNewPerson(people[currentIndex]);
+      saveState();
+      renderGrid();
+    } else {
+      alert("بازگشتی وجود ندارد.");
+    }
+  }
+
+  onValue(stateRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+    currentIndex = data.currentIndex ?? -1;
+    inactiveSet = new Set(data.inactive ?? []);
+    history = data.history ?? [];
+    renderGrid();
+  });
+
+  get(stateRef).then(snapshot => {
+    if (!snapshot.exists()) {
+      currentIndex = -1;
+      inactiveSet = new Set();
+      history = [];
+      saveState();
+    }
+  });
+
+  window.nextPerson = nextPerson;
+  window.prevPerson = prevPerson;
+</script>
+
+</body>
+</html>
